@@ -1,0 +1,51 @@
+name: Random updata every 10 minutes
+
+on:
+  schedule:
+    - cron: '3-59/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: random-updata
+  cancel-in-progress: false
+
+jobs:
+  write-random-text:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check GitHub token
+        env:
+          UPDATA_GITHUB_TOKEN: ${{ secrets.UPDATA_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$UPDATA_GITHUB_TOKEN" ]; then
+            echo '::error::Set the repository Actions secret UPDATA_GITHUB_TOKEN with contents write permission.'
+            exit 1
+          fi
+
+      - name: Create random text in updata
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.UPDATA_GITHUB_TOKEN }}
+          script: |
+            const { randomUUID, randomBytes } = require('node:crypto');
+            const { owner, repo } = context.repo;
+            const branch = context.payload.repository.default_branch;
+            const path = `updata/${randomUUID()}.txt`;
+            const text = `${randomBytes(256).toString('base64')}\n`;
+
+            const result = await github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              branch,
+              path,
+              message: `chore: add random text ${path}`,
+              content: Buffer.from(text, 'utf8').toString('base64'),
+            });
+            core.info(`Created ${path}`);
+            await core.summary
+              .addLink('Generated text file', result.data.content.html_url)
+              .write();
